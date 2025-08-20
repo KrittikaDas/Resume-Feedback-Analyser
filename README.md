@@ -1,19 +1,20 @@
 # Resume Feedback Analyzer
 
-An interactive web application built with Streamlit that analyzes a resume against a job description, providing instant feedback on matching and missing skills.
+An interactive web application that uses Generative AI to analyze a resume against a job description and provide structured feedback.
 
 ## Features
 
 - **Resume Parsing:** Extracts text from PDF and DOCX files.
-- **Skill Matching:** Identifies skills from a predefined list present in both the resume and job description.
-- **Structured Feedback:** Provides clear, actionable feedback on strengths (matched skills) and areas for improvement (missing skills).
+- **AI-Powered Analysis:** Leverages the Gemini API to intelligently compare a resume to a job description.
+- **Structured Feedback:** Provides a match score and detailed feedback on strengths, missing skills, and improvements.
 
 ## Tech Stack
 
 - **Python**
 - **Streamlit:** For the user interface.
+- **google-generativeai:** To connect with the Gemini API.
+- **python-dotenv:** To securely manage the API key.
 - **PyPDF2 & python-docx:** For resume text extraction.
-- **spaCy:** For basic text processing and keyword analysis.
 
 ## How to Run
 
@@ -31,10 +32,10 @@ An interactive web application built with Streamlit that analyzes a resume again
     ```bash
     pip install -r requirements.txt
     ```
-4.  **Download the `spaCy` model:**
-    ```bash
-    python -m spacy download en_core_web_sm
-    ```
+4.  **Set up your Google API key:**
+    * Go to [Google AI Studio](https://aistudio.google.com/app/apikey) to get your free API key.
+    * Create a file named `.env` in the project's root folder.
+    * Add your key to the file like this: `GOOGLE_API_KEY=your_key_here`.
 5.  **Run the application:**
     ```bash
     streamlit run app.py
@@ -44,3 +45,9 @@ An interactive web application built with Streamlit that analyzes a resume again
 ## Contributing
 
 Feel free to open issues or submit pull requests to improve this project.
+
+
+
+
+
+
