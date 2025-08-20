@@ -116,12 +116,28 @@ if st.button("Analyze Resume", type="primary"):
                 # Perform the analysis
                 matched, missing, extra = analyze_resume(resume_text, job_description)
 
+                # --- NEW CODE FOR STRETCH GOAL ---
+                # Calculate the resume score
+                total_skills_in_jd = len(matched) + len(missing)
+                if total_skills_in_jd > 0:
+                    score = (len(matched) / total_skills_in_jd) * 100
+                else:
+                    score = 0
+
+                # Display the score using st.metric and a progress bar
+                st.header("Resume Match Score")
+                score_display = f"{score:.1f}%"
+                st.metric(label="Overall Match", value=score_display)
+                st.progress(int(score) / 100)
+                st.markdown("---")
+                # --- END OF NEW CODE ---
+
                 # Display the results
                 st.header("Feedback Analysis")
                 st.markdown("---")
 
                 # Matched skills (Strengths)
-                st.subheader(" Strengths (Matched Skills)")
+                st.subheader("Strengths (Matched Skills)")
                 if matched:
                     st.success(f"**Found {len(matched)} skills from the job description in your resume:**")
                     st.info(", ".join(sorted(list(matched))))
@@ -129,7 +145,7 @@ if st.button("Analyze Resume", type="primary"):
                     st.warning("No matching skills were found. Try to tailor your resume to the job description.")
 
                 # Missing skills (Areas for Improvement)
-                st.subheader(" Areas for Improvement")
+                st.subheader("Areas for Improvement")
                 if missing:
                     st.warning(f"**You are missing {len(missing)} key skills from the job description:**")
                     st.markdown("Consider adding or highlighting these skills in your resume if you have experience with them.")
@@ -138,7 +154,7 @@ if st.button("Analyze Resume", type="primary"):
                     st.success("You have all the key skills from the job description. Great job!")
 
                 # Additional skills (Improvements)
-                st.subheader(" Additional Skills")
+                st.subheader("Additional Skills")
                 if extra:
                     st.info(f"**Your resume also lists the following skills not in the job description:**")
                     st.markdown("These could be valuable additions to showcase your breadth of knowledge.")
