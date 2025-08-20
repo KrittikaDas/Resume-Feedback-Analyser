@@ -1,4 +1,5 @@
 streamlit
 pypdf2
 python-docx
-spacy
+google-generativeai
+python-dotenv

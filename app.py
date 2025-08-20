@@ -1,23 +1,23 @@
 import streamlit as st
 import PyPDF2
 from docx import Document
-import spacy
+import google.generativeai as genai
 import io
+import json
+import os
 import re
+from dotenv import load_dotenv
 
-# Load the small English spaCy model
-nlp = spacy.load("en_core_web_sm")
+# Load environment variables
+load_dotenv()
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Define a list of common tech skills for keyword matching
-# This is a simple but effective way to start
-SKILLS_KEYWORDS = [
-    'Python', 'Java', 'C++', 'JavaScript', 'React', 'Angular',
-    'Vue.js', 'Node.js', 'HTML', 'CSS', 'SQL', 'NoSQL', 'MongoDB',
-    'PostgreSQL', 'Docker', 'Kubernetes', 'AWS', 'Azure', 'GCP',
-    'Git', 'GitHub', 'CI/CD', 'Agile', 'Scrum', 'Data Science',
-    'Machine Learning', 'Deep Learning', 'PyTorch', 'TensorFlow',
-    'Flask', 'Django', 'REST API'
-]
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    st.error("Google API key not found. Please set the GOOGLE_API_KEY environment variable.")
+    model = None
 
 # Function to extract text from a PDF file
 def extract_text_from_pdf(uploaded_file):
@@ -35,7 +35,6 @@ def extract_text_from_pdf(uploaded_file):
 def extract_text_from_docx(uploaded_file):
     text = ""
     try:
-        # Use io.BytesIO to handle the uploaded file
         doc = Document(io.BytesIO(uploaded_file.getvalue()))
         for paragraph in doc.paragraphs:
             text += paragraph.text + "\n"
@@ -43,33 +42,57 @@ def extract_text_from_docx(uploaded_file):
         st.error(f"Error extracting text from DOCX: {e}")
     return text
 
-# Function to analyze the resume against the job description
-def analyze_resume(resume_text, job_description_text):
-    # A simple, robust way to find skills is to check for their presence
-    # in a case-insensitive manner.
-    resume_skills = set()
-    jd_skills = set()
+# Function to analyze the resume against the job description using LLM
+def analyze_resume_with_llm(resume_text, job_description_text):
+    if not model:
+        return None
 
-    # Normalize both texts to lowercase for matching
-    resume_lower = resume_text.lower()
-    jd_lower = job_description_text.lower()
+    prompt = f"""
+    You are an AI career coach. Your task is to analyze a candidate's resume against a specific job description.
 
-    # Find skills present in the resume
-    for skill in SKILLS_KEYWORDS:
-        if skill.lower() in resume_lower:
-            resume_skills.add(skill)
+    Provide a structured JSON output with the following keys:
+    "matched_skills": a list of skills from the job description that are present in the resume.
+    "missing_skills": a list of key skills from the job description that are NOT in the resume.
+    "strengths": a short paragraph describing the candidate's main strengths based on the resume.
+    "improvements": a short paragraph suggesting specific improvements the candidate could make to their resume to better match the job description.
+    "score": an integer representing the percentage match (0-100) between the resume and the job description.
 
-    # Find skills present in the job description
-    for skill in SKILLS_KEYWORDS:
-        if skill.lower() in jd_lower:
-            jd_skills.add(skill)
+    Resume Text:
+    {resume_text}
 
-    # Determine matched, missing, and extra skills
-    matched_skills = resume_skills.intersection(jd_skills)
-    missing_skills = jd_skills.difference(resume_skills)
-    extra_skills = resume_skills.difference(jd_skills)
-
-    return matched_skills, missing_skills, extra_skills
+    Job Description:
+    {job_description_text}
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        
+        # Check if the response is empty or a simple error message
+        if not response.text:
+            st.error("AI returned an empty response.")
+            return None
+        
+        # Use a regex to find the JSON object and remove any extra text
+        # This is a robust way to handle the model sometimes adding extra words
+        # or backticks around the JSON.
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        
+        if not json_match:
+            st.error("Could not find a valid JSON object in the AI's response.")
+            st.write(f"Raw response from AI: {response.text}")
+            return None
+            
+        json_string = json_match.group(0)
+        feedback = json.loads(json_string)
+        return feedback
+        
+    except json.JSONDecodeError:
+        st.error("AI did not return a valid JSON format. Check the model's raw output.")
+        st.write(f"Raw response from AI: {response.text}")
+        return None
+    except Exception as e:
+        st.error(f"Error with Generative AI analysis: {e}")
+        return None
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Resume Feedback Analyzer")
@@ -101,7 +124,6 @@ if st.button("Analyze Resume", type="primary"):
         st.warning("Please upload a resume and paste a job description to start.")
     else:
         with st.spinner("Analyzing... this might take a moment."):
-            # Determine file type and extract text
             file_extension = uploaded_resume.name.split('.')[-1].lower()
             if file_extension == 'pdf':
                 resume_text = extract_text_from_pdf(uploaded_resume)
@@ -113,49 +135,32 @@ if st.button("Analyze Resume", type="primary"):
             if not resume_text:
                 st.error("Could not extract text from the uploaded file.")
             else:
-                # Perform the analysis
-                matched, missing, extra = analyze_resume(resume_text, job_description)
+                feedback = analyze_resume_with_llm(resume_text, job_description)
 
-                # --- NEW CODE FOR STRETCH GOAL ---
-                # Calculate the resume score
-                total_skills_in_jd = len(matched) + len(missing)
-                if total_skills_in_jd > 0:
-                    score = (len(matched) / total_skills_in_jd) * 100
-                else:
-                    score = 0
+                if feedback:
+                    # Display the score
+                    st.header("Resume Match Score")
+                    st.metric(label="Overall Match", value=f"{feedback.get('score', 0)}%")
+                    st.progress(int(feedback.get('score', 0)) / 100)
+                    st.markdown("---")
+                    
+                    # Display the detailed feedback
+                    st.header("Feedback Analysis")
+                    
+                    st.subheader("✅ Matched Skills")
+                    if feedback.get('matched_skills'):
+                        st.info(", ".join(feedback['matched_skills']))
+                    else:
+                        st.warning("No skills from the job description were matched.")
 
-                # Display the score using st.metric and a progress bar
-                st.header("Resume Match Score")
-                score_display = f"{score:.1f}%"
-                st.metric(label="Overall Match", value=score_display)
-                st.progress(int(score) / 100)
-                st.markdown("---")
-                # --- END OF NEW CODE ---
+                    st.subheader("💡 Missing Skills")
+                    if feedback.get('missing_skills'):
+                        st.warning(", ".join(feedback['missing_skills']))
+                    else:
+                        st.success("You have all the key skills from the job description. Great job!")
 
-                # Display the results
-                st.header("Feedback Analysis")
-                st.markdown("---")
+                    st.subheader("⭐ Strengths")
+                    st.write(feedback.get('strengths', ''))
 
-                # Matched skills (Strengths)
-                st.subheader("Strengths (Matched Skills)")
-                if matched:
-                    st.success(f"**Found {len(matched)} skills from the job description in your resume:**")
-                    st.info(", ".join(sorted(list(matched))))
-                else:
-                    st.warning("No matching skills were found. Try to tailor your resume to the job description.")
-
-                # Missing skills (Areas for Improvement)
-                st.subheader("Areas for Improvement")
-                if missing:
-                    st.warning(f"**You are missing {len(missing)} key skills from the job description:**")
-                    st.markdown("Consider adding or highlighting these skills in your resume if you have experience with them.")
-                    st.error(", ".join(sorted(list(missing))))
-                else:
-                    st.success("You have all the key skills from the job description. Great job!")
-
-                # Additional skills (Improvements)
-                st.subheader("Additional Skills")
-                if extra:
-                    st.info(f"**Your resume also lists the following skills not in the job description:**")
-                    st.markdown("These could be valuable additions to showcase your breadth of knowledge.")
-                    st.success(", ".join(sorted(list(extra))))
+                    st.subheader("🚀 Improvements")
+                    st.write(feedback.get('improvements', ''))
